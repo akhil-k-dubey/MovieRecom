@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 from recommendation_engine import MovieRecommendationEngine
+from auth import AuthManager 
 from PIL import Image
 import requests
 from io import BytesIO
@@ -23,6 +24,10 @@ def init_recommendation_engine():
     movies_df = load_data()
     engine = MovieRecommendationEngine(movies_df)
     return engine
+
+@st.cache_resource
+def init_auth_manager():
+    return AuthManager()
 
 def apply_netflix_style():
     st.markdown("""
@@ -368,3 +373,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
