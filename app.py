@@ -4,6 +4,8 @@ import numpy as np
 from recommendation_engine import MovieRecommendationEngine
 from auth import AuthManager
 from PIL import Image
+from database import init_db
+init_db()
 import requests
 from io import BytesIO
 
@@ -480,3 +482,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
