@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 from recommendation_engine import MovieRecommendationEngine
-from auth import AuthManager 
+from auth import AuthManager
 from PIL import Image
 import requests
 from io import BytesIO
@@ -134,8 +134,99 @@ def apply_netflix_style():
             display: inline-block;
             font-size: 12px;
         }
+        
+        .login-container {
+            max-width: 450px;
+            margin: 100px auto;
+            background-color: #1a1a1a;
+            padding: 60px;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+        }
+        
+        .login-header {
+            font-size: 32px;
+            font-weight: bold;
+            color: #ffffff;
+            margin-bottom: 30px;
+        }
+        
+        .stTextInput>div>div>input {
+            background-color: #2a2a2a;
+            color: #ffffff;
+            border: 1px solid #333333;
+            border-radius: 4px;
+            padding: 15px;
+        }
+        
+        .stTextInput>div>div>input:focus {
+            border-color: #E50914;
+        }
     </style>
     """, unsafe_allow_html=True)
+
+def display_login_page():
+    st.markdown("<div class='netflix-header'>🎬 NetflixAI</div>", unsafe_allow_html=True)
+    
+    col1, col2, col3 = st.columns([1, 2, 1])
+    
+    with col2:
+        st.markdown("<div class='login-container'>", unsafe_allow_html=True)
+        
+        tab1, tab2 = st.tabs(["Sign In", "Sign Up"])
+        
+        with tab1:
+            st.markdown("<div class='login-header'>Sign In</div>", unsafe_allow_html=True)
+            
+            login_username = st.text_input("Username", key="login_username")
+            login_password = st.text_input("Password", type="password", key="login_password")
+            
+            if st.button("Sign In", key="signin_button", use_container_width=True):
+                if login_username and login_password:
+                    auth_manager = init_auth_manager()
+                    success, message, user_id = auth_manager.authenticate(login_username, login_password)
+                    
+                    if success:
+                        st.session_state['authenticated'] = True
+                        st.session_state['username'] = login_username
+                        st.session_state['user_id'] = user_id
+                        
+                        user_ratings = auth_manager.get_user_ratings(user_id)
+                        st.session_state['user_ratings'] = user_ratings
+                        
+                        st.success(message)
+                        st.rerun()
+                    else:
+                        st.error(message)
+                else:
+                    st.warning("Please enter both username and password")
+        
+        with tab2:
+            st.markdown("<div class='login-header'>Create Account</div>", unsafe_allow_html=True)
+            
+            signup_username = st.text_input("Username", key="signup_username")
+            signup_email = st.text_input("Email", key="signup_email")
+            signup_password = st.text_input("Password", type="password", key="signup_password")
+            signup_confirm = st.text_input("Confirm Password", type="password", key="signup_confirm")
+            
+            if st.button("Sign Up", key="signup_button", use_container_width=True):
+                if signup_username and signup_email and signup_password and signup_confirm:
+                    if signup_password != signup_confirm:
+                        st.error("Passwords do not match")
+                    elif len(signup_password) < 6:
+                        st.error("Password must be at least 6 characters")
+                    else:
+                        auth_manager = init_auth_manager()
+                        success, message = auth_manager.create_user(signup_username, signup_password, signup_email)
+                        
+                        if success:
+                            st.success(message + " Please sign in.")
+                        else:
+                            st.error(message)
+                else:
+                    st.warning("Please fill in all fields")
+        
+        st.markdown("</div>", unsafe_allow_html=True)
 
 def display_movie_grid(movies_df, cols=5):
     if movies_df.empty:
@@ -188,6 +279,11 @@ def display_movie_detail(movie, engine):
             if 'user_ratings' not in st.session_state:
                 st.session_state['user_ratings'] = {}
             st.session_state['user_ratings'][movie['movie_id']] = user_rating
+            
+            if 'user_id' in st.session_state:
+                auth_manager = init_auth_manager()
+                auth_manager.save_user_rating(st.session_state['user_id'], movie['movie_id'], user_rating)
+            
             st.success(f"Rated {movie['title']} with {user_rating} stars!")
     
     with col2:
@@ -226,9 +322,8 @@ def display_movie_detail(movie, engine):
 def main():
     apply_netflix_style()
     
-    engine = init_recommendation_engine()
-    movies_df = load_data()
-    
+    if 'authenticated' not in st.session_state:
+        st.session_state['authenticated'] = False
     if 'page' not in st.session_state:
         st.session_state['page'] = 'browse'
     if 'user_ratings' not in st.session_state:
@@ -236,10 +331,27 @@ def main():
     if 'selected_movie_id' not in st.session_state:
         st.session_state['selected_movie_id'] = None
     
+    if not st.session_state['authenticated']:
+        display_login_page()
+        return
+    
+    engine = init_recommendation_engine()
+    movies_df = load_data()
+    
     st.markdown("<div class='netflix-header'>🎬 NetflixAI</div>", unsafe_allow_html=True)
     st.markdown("<p style='text-align: center; color: #b3b3b3; margin-bottom: 30px;'>Powered by Machine Learning Recommendations</p>", unsafe_allow_html=True)
     
     with st.sidebar:
+        st.markdown(f"### 👋 Welcome, {st.session_state.get('username', 'User')}!")
+        
+        if st.button("🚪 Logout"):
+            st.session_state['authenticated'] = False
+            st.session_state['username'] = None
+            st.session_state['user_id'] = None
+            st.session_state['user_ratings'] = {}
+            st.rerun()
+        
+        st.markdown("---")
         st.markdown("### 🎯 Navigation")
         
         nav_option = st.radio(
@@ -272,11 +384,6 @@ def main():
         st.markdown(f"### 📊 Your Stats")
         st.markdown(f"**Movies Rated:** {len(st.session_state['user_ratings'])}")
         st.markdown(f"**Total Movies:** {len(movies_df)}")
-        
-        if st.button("Clear All Ratings"):
-            st.session_state['user_ratings'] = {}
-            st.success("Ratings cleared!")
-            st.rerun()
     
     if st.session_state['page'] == 'movie_detail' and st.session_state['selected_movie_id']:
         movie = engine.get_movie_by_id(st.session_state['selected_movie_id'])
@@ -373,4 +480,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
